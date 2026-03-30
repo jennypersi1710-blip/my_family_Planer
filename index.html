@@ -91,6 +91,16 @@ main{max-width:1200px;margin:0 auto;padding:24px;}
 .task-del{padding:2px 6px;border-radius:5px;border:none;background:none;color:#ccc;cursor:pointer;font-size:0.75rem;}
 .task-del:hover{background:#fee;color:var(--danger);}
 
+.allday-banner{
+  background:linear-gradient(135deg,#e8f5ee,#d1fae5);
+  border:1.5px solid #6ee7b7; border-radius:10px;
+  padding:10px 14px; display:flex; align-items:center; gap:10px;
+  margin-bottom:4px;
+}
+.allday-banner .allday-title{font-size:.9rem;font-weight:700;flex:1;}
+.allday-banner .allday-tag{background:#fff;color:var(--accent);font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid #6ee7b7;}
+.allday-section{margin-bottom:12px;display:flex;flex-direction:column;gap:6px;}
+
 #view-week{display:none;}
 #view-week.active{display:block;}
 .week-nav{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap;}
@@ -109,7 +119,9 @@ main{max-width:1200px;margin:0 auto;padding:24px;}
 .wg-add-mini{display:block;width:100%;text-align:center;padding:2px;border-radius:5px;border:1.5px dashed var(--border);background:none;color:var(--text-soft);cursor:pointer;font-size:0.7rem;margin-top:2px;transition:all .15s;}
 .wg-add-mini:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light);}
 
-#view-settings{display:none;}
+.wg-family-label{background:linear-gradient(135deg,#e8f5ee,#d1fae5);display:flex;align-items:center;gap:8px;padding:8px 10px;border-left:3px solid var(--accent);}
+.wg-family-cell{background:linear-gradient(135deg,#f0fdf4,#ecfdf5);padding:6px;vertical-align:top;}
+.wg-family-pill{display:block;width:100%;text-align:right;padding:3px 7px;border-radius:6px;font-size:0.72rem;font-weight:600;margin-bottom:4px;border:none;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#bbf7d0;color:#166534;}
 #view-settings.active{display:block;}
 .settings-sections{display:flex;flex-direction:column;gap:24px;}
 .settings-card{background:var(--surface);border-radius:var(--radius);border:1.5px solid var(--border);padding:20px 24px;box-shadow:var(--shadow);}
@@ -300,6 +312,12 @@ textarea.input-base{resize:vertical;min-height:72px;}
         <label class="form-label">שעת סיום</label>
         <input class="input-base" id="task-time-end-input" type="time" />
       </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        <input type="checkbox" id="task-allday-check" style="margin-left:6px;accent-color:var(--accent);" onchange="toggleAlldayCheck(this.checked)">
+        🌅 אירוע כל היום
+      </label>
     </div>
 
     <div class="form-group">
@@ -527,10 +545,22 @@ function renderToday(){
   if(!state.people.length){grid.innerHTML=`<div class="empty-state"><div class="emoji">👨‍👩‍👧</div><h3>עוד אין חברי משפחה</h3><p>עבור להגדרות והוסף חברי משפחה.</p></div>`;return;}
   grid.innerHTML='';
   state.people.forEach(person=>{
-    const tasks=getTasksForDay(dayIdx).filter(t=>t.personId===person.id);
+    const allTasks=getTasksForDay(dayIdx).filter(t=>t.personId===person.id);
+    const alldayTasks=allTasks.filter(t=>t.allDay);
+    const timedTasks=allTasks.filter(t=>!t.allDay);
     const color=personColor(person),light=personLight(person);
     const card=document.createElement('div');card.className='kid-card';
-    const tasksHTML=tasks.length?tasks.map(t=>{
+
+    const alldayHTML=alldayTasks.length?`<div class="allday-section">${alldayTasks.map(t=>`
+      <div class="allday-banner">
+        <span>🌅</span>
+        <div class="allday-title">${t.title}</div>
+        <span class="allday-tag">כל היום</span>
+        ${!t._recurring?`<button class="task-del" onclick="openEditTask('${t.id}')" style="opacity:1;color:#94a3b8;">✏️</button>`:''}
+        ${!t._recurring?`<button class="task-del" onclick="deleteTask('${t.id}')" style="opacity:1;">✕</button>`:''}
+      </div>`).join('')}</div>`:'';
+
+    const tasksHTML=timedTasks.length?timedTasks.map(t=>{
       const resp=t.responsibleId?getPerson(t.responsibleId):null;
       const timeLabel=t.time?(t.timeEnd?`${t.time}–${t.timeEnd}`:t.time):null;
       return `<div class="task-item ${t.done?'done':''}">
@@ -549,12 +579,13 @@ function renderToday(){
           ${!t._recurring?`<button class="task-del" onclick="deleteTask('${t.id}')">✕</button>`:''}
         </div>
       </div>`;
-    }).join(''):`<div class="no-tasks">אין אירועים להיום 🎉</div>`;
+    }).join(''):(!alldayTasks.length?`<div class="no-tasks">אין אירועים להיום 🎉</div>`:'');
+
     card.innerHTML=`<div class="kid-card-header" style="background:${light}">
       <div class="kid-avatar" style="background:${color}">${person.name.charAt(0)}</div>
-      <div><div class="kid-name">${person.name}</div><div class="kid-role">${person.role==='child'?'ילד/ה':'הורה'} · ${tasks.length} אירועים</div></div>
+      <div><div class="kid-name">${person.name}</div><div class="kid-role">${person.role==='child'?'ילד/ה':'הורה'} · ${allTasks.length} אירועים</div></div>
       <button class="btn btn-ghost btn-sm" style="margin-right:auto;" onclick="openAddTaskFor('${person.id}')">+</button>
-    </div><div class="kid-tasks">${tasksHTML}</div>`;
+    </div><div class="kid-tasks">${alldayHTML}${tasksHTML}</div>`;
     grid.appendChild(card);
   });
 }
@@ -581,6 +612,29 @@ function renderWeek(){
     cell.className=`wg-cell wg-day-header${d===todayIdx&&weekOffset===0?' today-col':''}`;
     const dd=new Date(ws);dd.setDate(dd.getDate()+d);
     cell.innerHTML=`<strong>${DAYS_HE[d]}</strong><br><span style="font-size:.7rem">${dd.getDate()}/${dd.getMonth()+1}</span>`;
+    grid.appendChild(cell);
+  }
+  // שורת כל המשפחה
+  const familyLabel=document.createElement('div');
+  familyLabel.className='wg-cell wg-family-label';
+  familyLabel.innerHTML=`<span style="font-size:1rem;">👨‍👩‍👧‍👦</span><div class="wg-kid-name" style="color:var(--accent);font-weight:700;">${state.familyName||'כל המשפחה'}</div>`;
+  grid.appendChild(familyLabel);
+  for(let d=0;d<7;d++){
+    const cell=document.createElement('div');cell.className='wg-cell wg-family-cell';
+    const familyTasks=state.tasks.filter(t=>t.day===d&&t.personIds&&t.personIds.length===state.people.length&&state.people.length>0);
+    familyTasks.forEach(t=>{
+      const pill=document.createElement('button');
+      pill.className='wg-family-pill';
+      pill.textContent=(t.time?t.time+' ':'')+t.title;
+      pill.onclick=()=>openEditTask(t.id);
+      cell.appendChild(pill);
+    });
+    if(!familyTasks.length){
+      const empty=document.createElement('div');
+      empty.style.cssText='font-size:.65rem;color:#94a3b8;text-align:center;padding:4px;';
+      empty.textContent='—';
+      cell.appendChild(empty);
+    }
     grid.appendChild(cell);
   }
   state.people.forEach(person=>{
@@ -716,7 +770,12 @@ function onPersonCheck(){
   document.getElementById('task-all-family').checked=(checked.length===all.length);
 }
 
-function toggleAllFamily(val){
+function toggleAlldayCheck(val){
+  const row=document.querySelector('#task-time-input').closest('.form-row');
+  row.style.opacity=val?'0.3':'1';
+  row.style.pointerEvents=val?'none':'auto';
+  if(val){document.getElementById('task-time-input').value='';document.getElementById('task-time-end-input').value='';}
+}
   document.querySelectorAll('#task-persons-checkboxes input[type=checkbox]').forEach(cb=>{
     cb.checked=val;
     const p=state.people.find(p=>p.id===cb.value);
@@ -740,6 +799,8 @@ function openAddTask(dayIdx=todayDayIndex(),personId=null){
   document.getElementById('task-all-family').checked=false;
   document.getElementById('task-responsible-input').innerHTML='<option value="">— לא הוגדר —</option>'+state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   ['task-title-input','task-time-input','task-time-end-input','task-gear-input','task-note-input'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('task-allday-check').checked=false;
+  toggleAlldayCheck(false);
   document.getElementById('task-day-input').value=dayIdx;
   document.getElementById('task-recurring-check').checked=false;
   openModal('modal-task');
@@ -754,6 +815,8 @@ function openEditTask(id){
   buildPersonCheckboxes(ids);
   document.getElementById('task-all-family').checked=(ids.length===state.people.length);
   document.getElementById('task-responsible-input').innerHTML='<option value="">— לא הוגדר —</option>'+state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('task-allday-check').checked=!!t.allDay;
+  toggleAlldayCheck(!!t.allDay);
   document.getElementById('task-title-input').value=t.title||'';
   document.getElementById('task-day-input').value=t.day;
   document.getElementById('task-time-input').value=t.time||'';
@@ -779,6 +842,7 @@ document.getElementById('modal-task-save').onclick=()=>{
   const note=document.getElementById('task-note-input').value.trim();
   const responsibleId=document.getElementById('task-responsible-input').value||null;
   const recurring=document.getElementById('task-recurring-check').checked;
+  const allDay=document.getElementById('task-allday-check').checked;
   if(!title){toast('⚠️ שם חסר');return;}
   if(!personIds.length){toast('⚠️ בחרי לפחות אדם אחד');return;}
 
@@ -794,11 +858,11 @@ document.getElementById('modal-task-save').onclick=()=>{
 
   if(recurring){
     personIds.forEach(pid=>{
-      state.recurring.push({id:uid(),title,personId:pid,day,time,timeEnd,gear,groupId});
+      state.recurring.push({id:uid(),title,personId:pid,day,time,timeEnd,gear,groupId,allDay});
     });
   } else {
     personIds.forEach(pid=>{
-      state.tasks.push({id:editTaskId&&personIds.length===1?editTaskId:uid(),title,personId:pid,personIds,day,time,timeEnd,gear,note,responsibleId,done:false,recurring:false,groupId});
+      state.tasks.push({id:editTaskId&&personIds.length===1?editTaskId:uid(),title,personId:pid,personIds,day,time,timeEnd,gear,note,responsibleId,done:false,recurring:false,groupId,allDay});
     });
   }
   editTaskId=null;
