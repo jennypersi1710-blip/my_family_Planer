@@ -258,17 +258,24 @@ textarea.input-base{resize:vertical;min-height:72px;}
 </main>
 
 <div class="modal-backdrop" id="modal-task">
-  <div class="modal">
+  <div class="modal" style="max-width:520px;">
     <div class="modal-title" id="modal-task-title">+ הוסף אירוע</div>
+
     <div class="form-group">
       <label class="form-label">שם האירוע / המשימה *</label>
       <input class="input-base" id="task-title-input" placeholder='חוג קראטה, הצגה בגן...' />
     </div>
+
+    <div class="form-group">
+      <label class="form-label">עבור מי? *</label>
+      <div id="task-persons-checkboxes" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--surface2);border-radius:10px;border:1.5px solid var(--border);"></div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:.82rem;color:var(--accent);cursor:pointer;">
+        <input type="checkbox" id="task-all-family" style="accent-color:var(--accent);" onchange="toggleAllFamily(this.checked)">
+        כל המשפחה 👨‍👩‍👧‍👦
+      </label>
+    </div>
+
     <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">ילד / הורה</label>
-        <select class="input-base" id="task-person-input"></select>
-      </div>
       <div class="form-group">
         <label class="form-label">יום בשבוע</label>
         <select class="input-base" id="task-day-input">
@@ -278,17 +285,23 @@ textarea.input-base{resize:vertical;min-height:72px;}
           <option value="6">שבת</option>
         </select>
       </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">שעה (אופציונלי)</label>
-        <input class="input-base" id="task-time-input" type="time" />
-      </div>
       <div class="form-group">
         <label class="form-label">אחראי</label>
         <select class="input-base" id="task-responsible-input"></select>
       </div>
     </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">שעת התחלה</label>
+        <input class="input-base" id="task-time-input" type="time" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">שעת סיום</label>
+        <input class="input-base" id="task-time-end-input" type="time" />
+      </div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">ציוד נדרש</label>
       <input class="input-base" id="task-gear-input" placeholder='תיק שחייה, בקבוק מים...' />
@@ -519,18 +532,22 @@ function renderToday(){
     const card=document.createElement('div');card.className='kid-card';
     const tasksHTML=tasks.length?tasks.map(t=>{
       const resp=t.responsibleId?getPerson(t.responsibleId):null;
+      const timeLabel=t.time?(t.timeEnd?`${t.time}–${t.timeEnd}`:t.time):null;
       return `<div class="task-item ${t.done?'done':''}">
         <div class="task-check ${t.done?'checked':''}" onclick="toggleTask('${t.id}')"></div>
         <div class="task-body">
           <div class="task-title">${t.title}</div>
           <div class="task-meta">
-            ${t.time?`<span class="tag tag-time">🕐 ${t.time}</span>`:''}
+            ${timeLabel?`<span class="tag tag-time">🕐 ${timeLabel}</span>`:''}
             ${t.gear?`<span class="tag tag-gear">🎒 ${t.gear}</span>`:''}
             ${t.note?`<span class="tag tag-note">💬 ${t.note.slice(0,30)}${t.note.length>30?'…':''}</span>`:''}
           </div>
           ${resp?`<div class="task-responsible">👤 ${resp.name}</div>`:''}
         </div>
-        <div class="task-actions">${!t._recurring?`<button class="task-del" onclick="deleteTask('${t.id}')">✕</button>`:''}</div>
+        <div class="task-actions">
+          ${!t._recurring?`<button class="task-del" onclick="openEditTask('${t.id}')" style="color:#94a3b8;font-size:.7rem;">✏️</button>`:''}
+          ${!t._recurring?`<button class="task-del" onclick="deleteTask('${t.id}')">✕</button>`:''}
+        </div>
       </div>`;
     }).join(''):`<div class="no-tasks">אין אירועים להיום 🎉</div>`;
     card.innerHTML=`<div class="kid-card-header" style="background:${light}">
@@ -666,35 +683,126 @@ function saveRecurring(){
 function removeRecurring(id){state.recurring=state.recurring.filter(r=>r.id!==id);save();renderAll();toast('🗑️ נמחק');}
 
 let editTaskId=null;
+
 function populateSel(id){document.getElementById(id).innerHTML=state.people.map(p=>`<option value="${p.id}">${p.name} (${p.role==='child'?'ילד/ה':'הורה'})</option>`).join('');}
+
+function buildPersonCheckboxes(selectedIds=[]){
+  const box=document.getElementById('task-persons-checkboxes');
+  box.innerHTML=state.people.map(p=>{
+    const color=personColor(p);
+    const checked=selectedIds.includes(p.id)?'checked':'';
+    return `<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;border:1.5px solid ${checked?color:' var(--border)'};background:${checked?color+'18':'transparent'};cursor:pointer;font-size:.85rem;font-weight:600;transition:all .15s;" id="label-${p.id}">
+      <input type="checkbox" value="${p.id}" ${checked} style="accent-color:${color};" onchange="onPersonCheck()">
+      <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
+      ${p.name}
+    </label>`;
+  }).join('');
+}
+
+function onPersonCheck(){
+  // עדכן עיצוב לייבלים
+  document.querySelectorAll('#task-persons-checkboxes input[type=checkbox]').forEach(cb=>{
+    const p=state.people.find(p=>p.id===cb.value);
+    const color=p?personColor(p):'#aaa';
+    const label=document.getElementById('label-'+cb.value);
+    if(label){
+      label.style.borderColor=cb.checked?color:'var(--border)';
+      label.style.background=cb.checked?color+'18':'transparent';
+    }
+  });
+  // בטל "כל המשפחה" אם לא כולם מסומנים
+  const all=document.querySelectorAll('#task-persons-checkboxes input[type=checkbox]');
+  const checked=[...all].filter(c=>c.checked);
+  document.getElementById('task-all-family').checked=(checked.length===all.length);
+}
+
+function toggleAllFamily(val){
+  document.querySelectorAll('#task-persons-checkboxes input[type=checkbox]').forEach(cb=>{
+    cb.checked=val;
+    const p=state.people.find(p=>p.id===cb.value);
+    const color=p?personColor(p):'#aaa';
+    const label=document.getElementById('label-'+cb.value);
+    if(label){
+      label.style.borderColor=val?color:'var(--border)';
+      label.style.background=val?color+'18':'transparent';
+    }
+  });
+}
+
+function getSelectedPersonIds(){
+  return [...document.querySelectorAll('#task-persons-checkboxes input[type=checkbox]:checked')].map(c=>c.value);
+}
+
 function openAddTask(dayIdx=todayDayIndex(),personId=null){
   editTaskId=null;
   document.getElementById('modal-task-title').textContent='+ הוסף אירוע';
-  populateSel('task-person-input');
+  buildPersonCheckboxes(personId?[personId]:[]);
+  document.getElementById('task-all-family').checked=false;
   document.getElementById('task-responsible-input').innerHTML='<option value="">— לא הוגדר —</option>'+state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
-  ['task-title-input','task-time-input','task-gear-input','task-note-input'].forEach(i=>document.getElementById(i).value='');
+  ['task-title-input','task-time-input','task-time-end-input','task-gear-input','task-note-input'].forEach(i=>document.getElementById(i).value='');
   document.getElementById('task-day-input').value=dayIdx;
   document.getElementById('task-recurring-check').checked=false;
-  if(personId)document.getElementById('task-person-input').value=personId;
   openModal('modal-task');
 }
+
+function openEditTask(id){
+  const t=state.tasks.find(t=>t.id===id);
+  if(!t)return;
+  editTaskId=id;
+  document.getElementById('modal-task-title').textContent='✏️ ערוך אירוע';
+  const ids=t.personIds||[t.personId].filter(Boolean);
+  buildPersonCheckboxes(ids);
+  document.getElementById('task-all-family').checked=(ids.length===state.people.length);
+  document.getElementById('task-responsible-input').innerHTML='<option value="">— לא הוגדר —</option>'+state.people.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('task-title-input').value=t.title||'';
+  document.getElementById('task-day-input').value=t.day;
+  document.getElementById('task-time-input').value=t.time||'';
+  document.getElementById('task-time-end-input').value=t.timeEnd||'';
+  document.getElementById('task-gear-input').value=t.gear||'';
+  document.getElementById('task-note-input').value=t.note||'';
+  document.getElementById('task-recurring-check').checked=!!t.recurring;
+  document.getElementById('task-responsible-input').value=t.responsibleId||'';
+  openModal('modal-task');
+}
+
 function openAddTaskFor(pid){openAddTask(todayDayIndex(),pid);}
 function openAddTaskForDay(pid,day){openAddTask(day,pid);}
 document.getElementById('btn-add-task').onclick=()=>openAddTask();
+
 document.getElementById('modal-task-save').onclick=()=>{
   const title=document.getElementById('task-title-input').value.trim();
-  const personId=document.getElementById('task-person-input').value;
+  const personIds=getSelectedPersonIds();
   const day=+document.getElementById('task-day-input').value;
   const time=document.getElementById('task-time-input').value;
+  const timeEnd=document.getElementById('task-time-end-input').value;
   const gear=document.getElementById('task-gear-input').value.trim();
   const note=document.getElementById('task-note-input').value.trim();
   const responsibleId=document.getElementById('task-responsible-input').value||null;
   const recurring=document.getElementById('task-recurring-check').checked;
   if(!title){toast('⚠️ שם חסר');return;}
-  if(!personId){toast('⚠️ בחרי אדם');return;}
-  if(recurring){state.recurring.push({id:uid(),title,personId,day,time,gear});}
-  else{state.tasks.push({id:uid(),title,personId,day,time,gear,note,responsibleId,done:false,recurring:false});}
-  save();closeModal('modal-task');renderAll();toast('✅ נשמר!');
+  if(!personIds.length){toast('⚠️ בחרי לפחות אדם אחד');return;}
+
+  if(editTaskId){
+    // עריכה — מחק ישן ויצור חדש לכל אדם
+    state.tasks=state.tasks.filter(t=>t.id!==editTaskId);
+    // אם היה multi, מחק גם את האחים
+    const t=state.tasks.find(t=>t.groupId&&t.groupId===editTaskId);
+    if(t)state.tasks=state.tasks.filter(x=>x.groupId!==editTaskId);
+  }
+
+  const groupId=personIds.length>1?uid():null;
+
+  if(recurring){
+    personIds.forEach(pid=>{
+      state.recurring.push({id:uid(),title,personId:pid,day,time,timeEnd,gear,groupId});
+    });
+  } else {
+    personIds.forEach(pid=>{
+      state.tasks.push({id:editTaskId&&personIds.length===1?editTaskId:uid(),title,personId:pid,personIds,day,time,timeEnd,gear,note,responsibleId,done:false,recurring:false,groupId});
+    });
+  }
+  editTaskId=null;
+  save();closeModal('modal-task');renderAll();toast(editTaskId?'✏️ עודכן!':'✅ נשמר!');
 };
 
 function openModal(id){document.getElementById(id).classList.add('open');}
